@@ -13,6 +13,8 @@ using matrix::SquareMatrix;
 using Eigen::MatrixXf;
 using Eigen::VectorXf;
 
+#define __G 9.80665
+
 class QuadEstimatorEKF : public BaseQuadEstimator
 {
 public:
@@ -25,6 +27,8 @@ public:
 
   // helper functions for Predict
   VectorXf PredictState(VectorXf curState, float dt, V3F accel, V3F gyro);
+  VectorXf get_g(VectorXf mu_bar_current, float dt, V3F accel, V3F gyro);
+  MatrixXf get_gPrime(VectorXf mu_bar, float dt, V3F accel, V3F gyro);
   MatrixXf GetRbgPrime(float roll, float pitch, float yaw);
 
   virtual void UpdateFromIMU(V3F accel, V3F gyro);

@@ -4,6 +4,8 @@
 #include "Utility/StringUtils.h"
 #include "Math/Quaternion.h"
 
+#include <iostream>
+
 using namespace SLR;
 
 const int QuadEstimatorEKF::QUAD_EKF_NUM_STATES;
@@ -162,10 +164,57 @@ VectorXf QuadEstimatorEKF::PredictState(VectorXf curState, float dt, V3F accel, 
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
 
+  V3F accel_I = attitude.Rotate_BtoI(accel);
+
+  predictedState[0] = curState[0] + curState[3] * dt;
+  predictedState[1] = curState[1] + curState[4] * dt;
+  predictedState[2] = curState[2] + curState[5] * dt;
+  predictedState[3] = curState[3] + accel_I[0] * dt;
+  predictedState[4] = curState[4] + accel_I[1] * dt;
+  predictedState[5] = curState[5] + (accel_I[2]-__G) * dt;
+  predictedState[6] = curState[6];
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   return predictedState;
+}
+
+VectorXf QuadEstimatorEKF::get_g(VectorXf mu_bar_current, float dt, V3F accel, V3F gyro) {
+  return PredictState(mu_bar_current, dt, accel, gyro);
+}
+
+MatrixXf QuadEstimatorEKF::get_gPrime(VectorXf mu_bar, float dt, V3F accel, V3F gyro) {
+  const MatrixXf RbgPrime = GetRbgPrime(rollEst, pitchEst, ekfState(6));
+
+  const Eigen::Vector3f u(accel[0], accel[1], accel[2]);
+
+  MatrixXf gPrime(QUAD_EKF_NUM_STATES, QUAD_EKF_NUM_STATES);
+  gPrime.setIdentity();
+
+  gPrime(0,3) = dt;
+  gPrime(1,4) = dt;
+  gPrime(2,5) = dt;
+
+  gPrime(3,6) = RbgPrime.block<1,3>(0,0).dot(u) * dt;
+  gPrime(4,6) = RbgPrime.block<1,3>(1,0).dot(u) * dt;
+  gPrime(5,6) = RbgPrime.block<1,3>(2,0).dot(u) * dt;
+
+//  std::cout << "RbgPrime" << std::endl;
+//  std::cout << RbgPrime << std::endl;
+//  std::cout << "RbgPrime.block<1,3>(0,0)" << std::endl;
+//  std::cout << RbgPrime.block<1,3>(0,0) << std::endl;
+//
+//  std::cout << "RbgPrime.block<1,3>(1,0)" << std::endl;
+//  std::cout << RbgPrime.block<1,3>(1,0) << std::endl;
+//
+//  std::cout << "RbgPrime.block<1,3>(2,0)" << std::endl;
+//  std::cout << RbgPrime.block<1,3>(2,0) << std::endl;
+//
+//  std::cout << std::endl;
+//  std::cout << std::endl;
+//  std::cout << std::endl;
+
+  return gPrime;
 }
 
 MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
@@ -189,6 +238,21 @@ MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
 
+  const float r00 =-cos(pitch)*sin(yaw);
+  const float r01 = -sin(roll)*sin(pitch)*sin(yaw) - cos(roll)*cos(yaw);
+  const float r02 = -cos(roll)*sin(pitch)*sin(yaw) + sin(roll)*cos(yaw);
+
+  const float r10 = cos(pitch)*cos(yaw);
+  const float r11 = sin(roll)*sin(pitch)*cos(yaw) - cos(roll)*sin(yaw);
+  const float r12 = cos(roll)*sin(pitch)*cos(yaw) + sin(roll)*sin(yaw);
+
+  const float r20 = 0.0f;
+  const float r21 = 0.0f;
+  const float r22 = 0.0f;
+
+  RbgPrime << r00, r01, r02,
+              r10, r11, r12,
+              r20, r21, r22;
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -197,9 +261,6 @@ MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
 
 void QuadEstimatorEKF::Predict(float dt, V3F accel, V3F gyro)
 {
-  // predict the state forward
-  VectorXf newState = PredictState(ekfState, dt, accel, gyro);
-
   // Predict the current covariance forward by dt using the current accelerations and body rates as input.
   // INPUTS: 
   //   dt: time step to predict forward by [s]
@@ -226,19 +287,17 @@ void QuadEstimatorEKF::Predict(float dt, V3F accel, V3F gyro)
   // - if you want to transpose a matrix in-place, use A.transposeInPlace(), not A = A.transpose()
   // 
 
-  // we'll want the partial derivative of the Rbg matrix
-  MatrixXf RbgPrime = GetRbgPrime(rollEst, pitchEst, ekfState(6));
-
-  // we've created an empty Jacobian for you, currently simply set to identity
-  MatrixXf gPrime(QUAD_EKF_NUM_STATES, QUAD_EKF_NUM_STATES);
-  gPrime.setIdentity();
-
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
 
+  const VectorXf mu_bar = get_g(ekfState, dt, accel, gyro);
+
+  const MatrixXf G = get_gPrime(mu_bar, dt, accel, gyro);
+
+  ekfCov = G * ekfCov * G.transpose() + Q;
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
-  ekfState = newState;
+  ekfState = mu_bar;
 }
 
 void QuadEstimatorEKF::UpdateFromGPS(V3F pos, V3F vel)
