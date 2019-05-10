@@ -327,20 +327,27 @@ void QuadEstimatorEKF::UpdateFromGPS(V3F pos, V3F vel)
 void QuadEstimatorEKF::UpdateFromMag(float magYaw)
 {
   VectorXf z(1), zFromX(1);
-  z(0) = magYaw;
 
   MatrixXf hPrime(1, QUAD_EKF_NUM_STATES);
   hPrime.setZero();
 
   // MAGNETOMETER UPDATE
   // Hints: 
-  //  - Your current estimated yaw can be found in the state vector: ekfState(6)
+  //  - Your current estimated yaw can be found in the state vector:
   //  - Make sure to normalize the difference between your measured and estimated yaw
   //    (you don't want to update your yaw the long way around the circle)
   //  - The magnetomer measurement covariance is available in member variable R_Mag
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
 
-
+  z(0) = CONSTRAIN(magYaw, -M_PI, M_PI);
+  hPrime(0,6) = 1.0f;
+  zFromX(0) = CONSTRAIN(ekfState(6), -M_PI, M_PI);
+  float delta = magYaw - ekfState(6);
+  if (delta > F_PI) {
+      zFromX(0) += 2.f*F_PI;
+  } else if (delta < -F_PI) {
+      zFromX(0) -= 2.f*F_PI;
+}
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   Update(z, hPrime, R_Mag, zFromX);
